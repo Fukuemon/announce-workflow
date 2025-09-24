@@ -1,0 +1,12 @@
+# 環境設定
+env        = "local"
+project_id = "your-gcp-project-id"
+
+# GCS設定
+location      = "ASIA-NORTHEAST1"
+force_destroy = true
+
+# IAM設定（画像公開のため allUsers に閲覧権限を付与）
+gcs_viewers = ["allUsers"]
+# gcs_creators = ["serviceAccount:gas-service@example.iam.gserviceaccount.com"]
+# gcs_admins = ["user:admin@example.com"]

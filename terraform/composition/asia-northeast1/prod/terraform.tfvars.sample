@@ -1,0 +1,40 @@
+# n8n on Google Cloud Run - Production Environment
+
+# プロジェクト設定
+project_id = "your-gcp-project-id"
+
+# n8n設定
+n8n_image = "n8nio/n8n:latest"
+n8n_encryption_key = "your-n8n-encryption-key-here"
+n8n_db_connection_string = "{\"host\":\"aws-1-ap-northeast-1.pooler.supabase.com\",\"port\":\"6543\",\"database\":\"postgres\",\"user\":\"postgres.vsueaempwngmewqaxyls\",\"password\":\"your-password\",\"ssl\":true,\"sslmode\":\"require\"}"
+supabase_ssl_cert = "-----BEGIN CERTIFICATE-----\nYOUR_BASE64_ENCODED_CERT_CONTENT_HERE\n-----END CERTIFICATE-----"
+
+# n8n Basic認証パスワード
+n8n_basic_auth_password = "your-secure-password-here"
+
+# サービスアカウント設定
+existing_service_account_email = "your-existing-sa@your-project.iam.gserviceaccount.com"
+create_service_account = false
+
+# IAP設定（アクセスを許可するユーザー・グループ・サービスアカウント）
+iap_members = [
+  "user:your-email@example.com",
+  "group:your-group@example.com",
+  "serviceAccount:your-existing-sa@your-project.iam.gserviceaccount.com"
+]
+
+
+# Cloud Run設定
+cpu_limit     = "1"
+memory_limit  = "2Gi"
+min_instances = 0
+max_instances = 3
+timeout       = "300s"
+
+# GCS設定
+force_destroy = false
+
+# IAM設定
+gcs_viewers  = []
+gcs_creators = []
+gcs_admins   = []

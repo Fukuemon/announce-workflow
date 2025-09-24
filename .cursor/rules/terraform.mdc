@@ -1,0 +1,235 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+# Terraform 構築時のルール
+
+## Terraform ディレクト構成
+
+基本的には下記の Terraform Best Practice に倣って構築している
+https://www.terraform-best-practices.com/ja
+
+### Resource module
+
+VPC・Compute Engine・Cloud SQL などの GCP リソースのこと
+上位階層から引数を受け取り、受け取った値を元にリソースを構築する。
+また、リソースごとの出力値を上位階層に伝播する。
+
+### グルーピング
+
+- GCP のリソースはサービス群ごとにグループ分けして管理している
+
+```bash
+resource_modules
+├── compute
+│   ├── gce          # Compute Engine
+│   ├── gke          # Google Kubernetes Engine
+│   │   └── modules
+│   │       ├── cluster
+│   │       ├── node-pool
+│   │       └── workload-identity
+│   └── cloud-run    # Cloud Run
+├── database
+│   ├── cloud-sql    # Cloud SQL
+│   │   └── modules
+│   │       ├── mysql
+│   │       ├── postgresql
+│   │       └── backup
+│   └── firestore    # Firestore
+├── network
+│   ├── vpc          # Virtual Private Cloud
+│   │   └── modules
+│   │       ├── subnets
+│   │       ├── firewall
+│   │       └── nat
+│   ├── load-balancer # Load Balancer
+│   ├── cloud-dns    # Cloud DNS
+│   └── cloud-cdn    # Cloud CDN
+├── security
+│   ├── iam          # Identity and Access Management
+│   ├── secret-manager # Secret Manager
+│   └── kms          # Key Management Service
+└── storage
+    ├── gcs          # Cloud Storage
+    └── persistent-disk # Persistent Disk
+```
+
+### Infra module
+
+リソースモジュールの集まり
+構築するシステムの要件によって構成が変わる
+
+#### 作成方法
+
+- Resource module は、Terraform Registry にある既存の GCP リソースを利用している
+  - Deepwiki MCP を使用してモジュールの仕様と実装例を理解
+  - Google Cloud Provider 公式モジュールを基に構築
+
+#### Deepwiki MCP を使った実装フロー
+
+1. **モジュール調査**: Terraform Registry で GCP の公式モジュールを検索
+2. **Deepwiki MCP 実行**: 対象モジュールのドキュメントとサンプルコードを分析
+3. **要件理解**: プロジェクト要件に合わせてモジュールの設定を調整
+4. **実装**: 理解した内容を基にリソースモジュールを作成
+5. **検証**: terraform plan/apply で動作確認
+
+```bash
+# 例: GKEモジュールの調査
+deepwiki "terraform-google-modules/terraform-google-kubernetes-engine"
+# 出力された情報を基に、プロジェクト要件に合わせてカスタマイズ
+```
+
+#### グルーピング
+
+- VPC や Firewall・Cloud DNS など、ネットワークに関わるモジュールを集合したもの
+- GKE や Cloud Run・Cloud SQL など、アプリの要件を満たすためのモジュールを集合したもの
+- GCS など、アプリ全体で利用する Storage のモジュール
+- その他必要に応じて
+
+といった分類で分けている。
+
+### Composition module
+
+起点となるモジュール
+インフラモジュールの集まりで、分け方としては「開発」「本番」や、リージョンごとの単位でディレクトリを切る
+
+```bash
+└─── composition
+    └── asia-northeast1    # GCPリージョン
+        ├── dev
+        └─── prod
+```
+
+`terraform.tfvars` に引数に値を流す事で、下の階層へ伝播され、渡した引数によってリソースが作成される。
+
+## Terraform モジュール設計ルール
+
+## 基本設計原則
+
+### 1. 環境共通値のデフォルト設定
+
+- **infra_module**: 環境で共通の値は`default`値を設定
+- **composition**: 環境ごとに異なる値のみを変数として受け取る
+- プロジェクト固有の設定（アプリ名、リソース名など）は`default`値で設定
+
+### 2. タグ管理の統一
+
+- **data.tf**: タグの定義と管理を一元化
+- **locals**: リソース名の生成とタグのマージを統一
+- 環境、プロジェクト、サービス種別をタグで識別
+
+### 3. 変数の分類
+
+```hcl
+# プロジェクト固有設定（default値あり）
+variable "app_name" {
+  description = "アプリケーション名"
+  type        = string
+  default     = "announce-workflow"
+}
+
+# 環境ごとのインスタンス設定（default値なし）
+variable "env" {
+  description = "デプロイ環境"
+  type        = string
+}
+```
+
+### 4. リソース命名規則
+
+- 命名パターン: `${app_name}-${resource_name}-${env}`
+- バケット名: `${app_name}-${env}-${bucket_name}-${region}`
+- タグで Name、Project、Environment、Service を設定
+
+## Terraform MCP と Deepwiki MCP を活用した GCP モジュール実装ガイド
+
+### Deepwiki MCP
+
+ドキュメントやサンプルコードを解析し、ベストプラクティスや実装パターンを広く収集する。
+
+#### 推奨される GCP 公式モジュール
+
+Terraform Registry で Deepwiki MCP を使って調査すべき主要な GCP モジュール：
+
+1. **terraform-google-modules/terraform-google-cloud-storage**
+
+   - Cloud Storage バケットの構築
+   - IAM ポリシーの設定
+
+2. **GoogleCloudPlatform/terraform-google-cloud-run**
+
+   - Cloud Run の構築
+   - コンテナアプリの管理
+
+3. **GoogleCloudPlatform/terraform-google-secret-manager**
+   - Secret Manager の構築
+
+#### Deepwiki MCP を使った実装例
+
+```bash
+# 1. モジュールの詳細調査
+deepwiki "terraform-google-modules/terraform-google-kubernetes-engine README"
+
+# 2. 特定機能の実装方法を調査
+deepwiki "terraform-google-kubernetes-engine workload identity example"
+
+# 3. ベストプラクティスを学習
+deepwiki "terraform google cloud best practices security"
+
+# 4. トラブルシューティング
+deepwiki "terraform google provider authentication error"
+```
+
+### Terraform MCP
+
+Terraform Registry 上の リソース／モジュールの正確な仕様・型情報 を取得し、生成コードや設計に落とし込む。
+
+#### 必須属性の確認
+
+新規リソース追加時は、Terraform MCP で対象リソースの 必須属性・型 を取得してレビューに反映する。
+
+Deepwiki MCP で得た実装例に不足や古い記述がないかクロスチェックする。
+
+#### モジュールの Inputs/Outputs 確認
+
+公式／Verified モジュールを利用する場合は、Terraform MCP で inputs / outputs の一覧を取得して設計書に反映。
+
+必要に応じてサブモジュール構成（例: GKE → cluster, node-pool, workload-identity）を確認する。
+
+#### リソース命名規則の適用
+
+Terraform MCP で生成したスキャフォールドコードを利用する際も、必ず既存ルールにある 命名規則 ${app_name}-${resource_name}-${env} を適用。
+
+出力例に準拠していない場合は修正の上 commit。
+
+#### 差分レビュー
+
+terraform plan 前に Terraform MCP を用いて「直近変更リソースの仕様」を取得。
+plan 出力と照合し、破壊的変更がないかをレビュー段階で可視化する。
+セキュリティ関連の確認
+
+Terraform MCP を利用して、IAM / Secret Manager / KMS の各リソースの セキュリティ関連属性（例: rotation, encryption, policy 継承設定など）を必ず洗い出す。
+
+#### セキュリティレビュー時のチェックリストとして活用。
+
+利用タイミング
+新規モジュール作成時
+バージョンアップ（Provider / Module）の対応時
+トラブルシューティング時（認証エラー、非推奨属性警告など）
+
+#### Terraform MCP 活用例
+
+```
+# リソース仕様の確認
+mcp terraform resources google_compute_instance
+
+# モジュールの入力・出力一覧を取得
+mcp terraform module terraform-google-modules/cloud-storage/google
+
+# セキュリティ属性の抜粋確認
+mcp terraform resources google_secret_manager_secret
+```
+
+上記のように Terraform MCP を通じて仕様を引き、構築ルールや命名規則に沿った形へリファインすることを徹底する。
