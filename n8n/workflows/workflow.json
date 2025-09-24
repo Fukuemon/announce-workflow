@@ -1,0 +1,473 @@
+{
+  "name": "Speaker Announcement Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "speaker-approval",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "af10a31e-b1f8-49ad-9948-a0a3ab44fe8d",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1168, 176],
+      "webhookId": "speaker-approval"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1lDecpnD2C6RsaAu8Ss1-gJLGYKfMgMQmcAHioMo7an8",
+          "mode": "list",
+          "cachedResultName": "登壇者用情報登録フォーム（回答）",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lDecpnD2C6RsaAu8Ss1-gJLGYKfMgMQmcAHioMo7an8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1223938757,
+          "mode": "list",
+          "cachedResultName": "フォームの回答 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lDecpnD2C6RsaAu8Ss1-gJLGYKfMgMQmcAHioMo7an8/edit#gid=1223938757"
+        },
+        "options": {}
+      },
+      "id": "67d43cfb-3b7e-4086-97cf-e03759a60950",
+      "name": "Get Speaker Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-992, 160],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jJ4JknooF7AvNiLh",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-pro",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-pro"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{$json[\"gemini_prompt\"]}}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "90c1ee11-552f-4352-9ec0-fa3818c26763",
+      "name": "Gemini Text Generation",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [-608, 176],
+      "alwaysOutputData": false,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "GJsyzFY2hlOhMOVb",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gemini Post Processing - simplified & robust input detection\nconst allInputs = ($input.all() || []).map((i) => i?.json);\n\n// 重複チェック結果を確認\nconst skipData = allInputs.find((j) => j && j.skip_processing);\nif (skipData) {\n  console.log(\n    `[Post Processing] 処理をスキップします。理由: ${skipData.reason}`\n  );\n  return {\n    json: {\n      skip_processing: true,\n      reason: skipData.reason,\n      email: skipData.email,\n      workflow_metadata: {\n        trigger_time: new Date().toISOString(),\n        source: \"webhook\",\n      },\n    },\n  };\n}\n\n// 前処理データ候補を自動検出（speaker_data を含むもの）\nlet pre =\n  allInputs.find((j) => j && (j.speaker_data || j.template_data)) ||\n  $items(\"Data Preprocessing1\")?.[0]?.json ||\n  $items(\"Data Preprocessing\")?.[0]?.json ||\n  $input.first()?.json ||\n  {};\n\n// Gemini出力候補を自動検出（content/candidates/response/text いずれかを含むもの）\nlet gem =\n  allInputs.find(\n    (j) =>\n      j &&\n      (Array.isArray(j) ||\n        j.content ||\n        j.candidates ||\n        j.response ||\n        j.text ||\n        j.output ||\n        j.message)\n  ) ||\n  $items(\"Gemini Text Generation\")?.[0]?.json ||\n  $input.last()?.json;\n\nfunction getGeminiText(r) {\n  if (!r) return \"\";\n  if (Array.isArray(r)) {\n    const t = r?.[0]?.content?.parts?.[0]?.text;\n    return typeof t === \"string\" ? t.trim() : \"\";\n  }\n  const t =\n    r?.content?.parts?.[0]?.text ??\n    r?.candidates?.[0]?.content?.parts?.[0]?.text ??\n    r?.response?.text ??\n    r?.text ??\n    r?.output ??\n    r?.message;\n  return typeof t === \"string\" ? t.trim() : \"\";\n}\n\nconst speakerDefaults = {\n  name: \"登壇者名不明\",\n  email: \"\",\n  affiliation: \"所属不明\",\n  title: \"肩書不明\",\n  session_title: \"セッションタイトル不明\",\n  bio: \"紹介文なし\",\n};\nconst templateDefaults = { short_bio: \"紹介文なし\" };\n\nconst speaker = { ...speakerDefaults, ...(pre?.speaker_data || {}) };\nconst template = { ...templateDefaults, ...(pre?.template_data || {}) };\n\nlet text = getGeminiText(gem);\n\nconst invalidPhrases = [\n  \"As an AI\",\n  'I don\\'t \"think\"',\n  \"computational process\",\n  \"eulogy\",\n  \"grandmother\",\n  \"Of course. I am so very sorry\",\n];\nconst isInvalid =\n  !text ||\n  text.length < 50 ||\n  !text.includes(\"DevFest\") ||\n  invalidPhrases.some((p) => text.includes(p));\n\nif (isInvalid) {\n  const bio = template.short_bio || speaker.bio || \"\";\n  const bioShort = bio\n    ? bio.slice(0, 80) + (bio.length > 80 ? \"...\" : \"\")\n    : \"登壇者の紹介文\";\n  text = `DevFest 2025 in Kwansai\n「${speaker.session_title}」のご紹介 🎯\n\n${speaker.affiliation} ${speaker.title}の\n${speaker.name}さんが登壇！\n\n${bioShort}\n✨\n\n🔗 詳細・申込はこちら ⬇️\nhttps://gdgkwansai.connpass.com/event/366115/`;\n}\n\nif (text.length > 280) text = text.slice(0, 277) + \"...\";\n\nconst ng = [\"spam\", \"fake\", \"scam\"];\nif (ng.some((w) => text.toLowerCase().includes(w))) {\n  throw new Error(\"Generated text contains inappropriate content\");\n}\n\nreturn {\n  json: {\n    ...speaker,\n    generated_post_text: text,\n    post_metadata: {\n      character_count: text.length,\n      generation_timestamp: new Date().toISOString(),\n      model_used: \"gemini-1.5-flash\",\n      data_source: pre?.speaker_data ? \"preprocessed\" : \"fallback\",\n      extraction_method: isInvalid ? \"template\" : \"gemini\",\n    },\n  },\n};\n"
+      },
+      "id": "4d5d99b6-62b0-487e-ada1-4219d6d99c66",
+      "name": "Post Processing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-304, 176]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "spaceId": "spaces/AAQA7NRvzpU",
+        "messageUi": {
+          "text": "=📢 投稿文生成完了！\n\n登壇者: {{ $json.name }}さん\n所属: {{ $json.affiliation }}\nセッションタイトル: {{ $json.session_title }}\n\n生成された投稿文:\n\n{{ $json.generated_post_text }}\n\n文字数: {{$json.post_metadata.character_count }}\n\nスプレッドシートをご確認ください\nhttps://docs.google.com/spreadsheets/d/1lDecpnD2C6RsaAu8Ss1-gJLGYKfMgMQmcAHioMo7an8"
+        },
+        "additionalFields": {
+          "requestId": "="
+        }
+      },
+      "id": "360e0a74-9a3e-42db-b88e-b38314d7e615",
+      "name": "Google Chat Notification",
+      "type": "n8n-nodes-base.googleChat",
+      "typeVersion": 1,
+      "position": [-96, 144],
+      "webhookId": "b15aa7e5-7881-44ad-8695-434b615f04bf",
+      "credentials": {
+        "googleChatOAuth2Api": {
+          "id": "eTO5BZy13DzoWBSH",
+          "name": "Chat account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1lDecpnD2C6RsaAu8Ss1-gJLGYKfMgMQmcAHioMo7an8",
+          "mode": "list",
+          "cachedResultName": "登壇者用情報登録フォーム（回答）",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lDecpnD2C6RsaAu8Ss1-gJLGYKfMgMQmcAHioMo7an8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1223938757,
+          "mode": "list",
+          "cachedResultName": "フォームの回答 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lDecpnD2C6RsaAu8Ss1-gJLGYKfMgMQmcAHioMo7an8/edit#gid=1223938757"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "SNS投稿文": "={{ $('Post Processing').item.json.generated_post_text }}",
+            "メールアドレス": "={{ $('Post Processing').item.json.email }}"
+          },
+          "matchingColumns": ["メールアドレス"],
+          "schema": [
+            {
+              "id": "列 1",
+              "displayName": "列 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "メールアドレス",
+              "displayName": "メールアドレス",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "お名前",
+              "displayName": "お名前",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "お名前(フリガナ)",
+              "displayName": "お名前(フリガナ)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ご所属",
+              "displayName": "ご所属",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "肩書",
+              "displayName": "肩書",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "メールアドレス",
+              "displayName": "メールアドレス",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ポートレート画像またはアイコン\n風景写真や絵画などでも大丈夫です！",
+              "displayName": "ポートレート画像またはアイコン\n風景写真や絵画などでも大丈夫です！",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "自己紹介文\n文量については、過去のイベントページを参照ください\n文章のトーンについては、なるべく明るく書いていただけますと幸いです！",
+              "displayName": "自己紹介文\n文量については、過去のイベントページを参照ください\n文章のトーンについては、なるべく明るく書いていただけますと幸いです！",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "セッションタイトル(仮題可)",
+              "displayName": "セッションタイトル(仮題可)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "セッション概要(仮のもので可)",
+              "displayName": "セッション概要(仮のもので可)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "セッション内で音声付きの動画・コンテンツを扱いますか？",
+              "displayName": "セッション内で音声付きの動画・コンテンツを扱いますか？",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "connpass ID\n例) @naokirodion (https://connpass.com/user/naokirodion/)",
+              "displayName": "connpass ID\n例) @naokirodion (https://connpass.com/user/naokirodion/)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "X アカウント\n例) @naokirodion (https://x.com/naokirodion)",
+              "displayName": "X アカウント\n例) @naokirodion (https://x.com/naokirodion)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "登壇にあたり、コミュニティ行動規範に同意しますか？\nコミュニティ行動規範 (日本語版)\nCode of Conduct (English)",
+              "displayName": "登壇にあたり、コミュニティ行動規範に同意しますか？\nコミュニティ行動規範 (日本語版)\nCode of Conduct (English)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "セッション資料やセッションの録画などを、主催者が配信・アーカイブ・twitterなどで公開する事に同意する\n\n (お顔の画像や動画、あるいは資料などを配信されたくない場合は「同意しない」にチェックの上、「その他」の欄に詳細をお書きください)",
+              "displayName": "セッション資料やセッションの録画などを、主催者が配信・アーカイブ・twitterなどで公開する事に同意する\n\n (お顔の画像や動画、あるいは資料などを配信されたくない場合は「同意しない」にチェックの上、「その他」の欄に詳細をお書きください)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "その他 (ご質問や要望)",
+              "displayName": "その他 (ご質問や要望)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "GCS画像URL",
+              "displayName": "GCS画像URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "イベントページ掲載文",
+              "displayName": "イベントページ掲載文",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "投稿ステータス",
+              "displayName": "投稿ステータス",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "SNS投稿文",
+              "displayName": "SNS投稿文",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "c6ffea95-042c-4eca-83a0-e93b225de713",
+      "name": "Update Spreadsheet - Posted",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [144, 112],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jJ4JknooF7AvNiLh",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Webhook と Sheets データを複数の方法で取得し、emailで行特定\n// 複数の入力から適切にデータを抽出する\nconst allInputs = $input.all();\nlet webhookData = {};\nlet sheetItems = [];\n\n// 入力データを分類\nfor (const input of allInputs) {\n  const data = input.json || input;\n\n  // Webhook データの判定（body, query, email/name プロパティがある）\n  if (data.body || data.query || (data.email && data.name)) {\n    webhookData = data;\n  }\n  // Sheet データの判定（日本語カラム名または英語カラム名がある）\n  else if (\n    data[\"メールアドレス\"] ||\n    data[\"お名前\"] ||\n    (data.email && !data.body && !data.query)\n  ) {\n    sheetItems.push(data);\n  }\n}\n\n// Webhook からの email と name を抽出\nconst emailFromWebhook = (\n  webhookData.body?.email ||\n  webhookData.query?.email ||\n  webhookData.email ||\n  \"\"\n)\n  .toString()\n  .trim();\nconst nameFromWebhook = (\n  webhookData.body?.name ||\n  webhookData.query?.name ||\n  webhookData.name ||\n  \"\"\n)\n  .toString()\n  .trim();\n\n// デバッグ情報をログ出力\nconsole.log(\"Webhook data:\", JSON.stringify(webhookData));\nconsole.log(\"Sheet items count:\", sheetItems.length);\nconsole.log(\"Email from webhook:\", emailFromWebhook);\n\n// 入力チェック\nif (!emailFromWebhook && sheetItems.length === 0) {\n  throw new Error(\"Webhook と Sheet の入力が不足しています\");\n}\n\n// email の決定（Webhook優先、なければSheet先頭行）\nconst email =\n  emailFromWebhook ||\n  (\n    sheetItems[0] &&\n    (sheetItems[0][\"メールアドレス\"] || sheetItems[0].email || \"\")\n  )\n    .toString()\n    .trim();\nif (!email) {\n  throw new Error(\"email が見つかりません (webhook もしくは sheet 先頭行)\");\n}\n\n// Sheet から該当する行を検索（重複するemailの場合は最新の1つだけを取得）\nconst matchingRows = sheetItems.filter(\n  (r) => (r[\"メールアドレス\"] || r.email) === email\n);\nconst row =\n  matchingRows.length > 0\n    ? matchingRows[matchingRows.length - 1]\n    : sheetItems[0] || {};\n\nconsole.log(\n  `[重複チェック] 該当する行数: ${matchingRows.length}, 選択した行: ${\n    matchingRows.length > 0 ? \"最新\" : \"先頭\"\n  }`\n);\n\n// 重複実行チェック：SNS投稿文が既に存在する場合はスキップ\nconst existingSnsPost = row[\"SNS投稿文\"] || row.sns_post_text || \"\";\nif (existingSnsPost && existingSnsPost.trim().length > 0) {\n  console.log(\n    `[重複チェック] SNS投稿文が既に存在します。email: ${email}, 投稿文長: ${existingSnsPost.length}`\n  );\n  return {\n    json: {\n      skip_processing: true,\n      reason: \"sns_post_already_exists\",\n      email: email,\n      existing_post_length: existingSnsPost.length,\n      workflow_metadata: {\n        trigger_time: new Date().toISOString(),\n        source: \"webhook\",\n      },\n    },\n  };\n}\n\n// 投稿ステータスチェック：postedの場合はスキップ（approvedは処理続行）\nconst postStatus = row[\"投稿ステータス\"] || row.post_status || \"\";\nif (postStatus === \"posted\") {\n  console.log(\n    `[重複チェック] 既に投稿済みです。email: ${email}, status: ${postStatus}`\n  );\n  return {\n    json: {\n      skip_processing: true,\n      reason: \"already_posted\",\n      email: email,\n      post_status: postStatus,\n      workflow_metadata: {\n        trigger_time: new Date().toISOString(),\n        source: \"webhook\",\n      },\n    },\n  };\n}\n\nconsole.log(\n  `[重複チェック] 処理を続行します。email: ${email}, status: ${postStatus}, 既存投稿文: ${existingSnsPost.length}文字`\n);\n\n// データの整形\nconst cleanedData = {\n  name: (row.name || row[\"お名前\"] || nameFromWebhook || \"\").toString().trim(),\n  email: email,\n  affiliation: (row.affiliation || row[\"ご所属\"] || \"\").toString().trim(),\n  title: (row.title || row[\"肩書\"] || \"\").toString().trim(),\n  bio: (row.bio || row[\"自己紹介文\"] || row[\"イベントページ掲載文\"] || \"\")\n    .toString()\n    .trim(),\n  session_title: (row.session_title || row[\"セッションタイトル(仮題可)\"] || \"\")\n    .toString()\n    .trim(),\n  session_description: (\n    row.session_description ||\n    row[\"セッション概要(仮のもので可)\"] ||\n    \"\"\n  )\n    .toString()\n    .trim(),\n  x_account: (row.x_account || row[\"X アカウント\"] || \"\").toString().trim(),\n  connpass_id: (row.connpass_id || row[\"connpass ID\"] || \"\").toString().trim(),\n  portrait_gcs_url: row.portrait_gcs_url || row[\"GCS画像URL\"] || \"\",\n  event_page_text: row.event_page_text || row[\"イベントページ掲載文\"] || \"\",\n  timestamp: row.timestamp || row[\"タイムスタンプ\"] || row[\"列 1\"] || \"\",\n};\n\nconst shortBio =\n  cleanedData.bio.substring(0, 80) + (cleanedData.bio.length > 80 ? \"...\" : \"\");\nconst snsTemplateData = {\n  name: cleanedData.name,\n  affiliation: cleanedData.affiliation,\n  title: cleanedData.title,\n  session_title: cleanedData.session_title,\n  short_bio: shortBio,\n  event_date: \"2025/10/18(土) 10:00-18:00\",\n  event_url: \"https://gdgkwansai.connpass.com/event/366115/\",\n  event_hashtag: \"devfest_kwansai_2025\",\n  additional_hashtags: \"automation n8n gemini\",\n};\n\nconst fewShotPrompt = `あなたは日本のテックイベント「DevFest 2025 in Kwansai」の広報担当者です。登壇者の情報をもとに、X（Twitter）投稿用の告知文を日本語で作成してください。\n\n【重要】必ず日本語のみで回答してください。英語は使用しないでください。\n\n## 作成する告知文の形式\n以下の形式で280文字以内で作成してください：\n\nDevFest 2025 in Kwansai\n「[セッションタイトル]」のご紹介[絵文字]\n\n[所属] [肩書]の\n[登壇者名]さんが登壇！\n\n[短縮紹介文]\n✨\n\n🔗 詳細・申込はこちら ⬇️\nhttps://gdgkwansai.connpass.com/event/366115/\n\n## 参考例1\nDevFest 2025 in Kwansai\n「LLM の推論能力と人類最後の試験」のご紹介 🧠\n\n東京大学大学院 松尾研 LLM 開発コンペ 2025 RAMEN の\n佐藤 諒平さんが登壇！\n\nLLM が知識をどう推論能力に結びつけるのか？\n「人類最後の試験」と呼ばれる難題に挑む最新研究の一端を、\n最前線からお届けします\n✨\n\n🔗 詳細・申込はこちら ⬇️\nhttps://gdgkwansai.connpass.com/event/366115/\n\n## 参考例2\nDevFest 2025 in Kwansai\n「世界で戦うエンジニアを育てる」のご紹介🌏\n\n一般社団法人ソフトウェアエンジニアリング協会 理事の\n野田 久順さんが登壇！\n\nGoogle・Apple・Metaなどに30名近くを輩出してきた\n模擬面接・育成プログラムの実践経験から、\n世界に通じるエンジニア教育のリアルをお届けします\n🔥\n\n🔗 詳細・申込はこちら ⬇️\nhttps://gdgkwansai.connpass.com/event/366115/\n\n## 登壇者情報\n登壇者名: ${snsTemplateData.name}\n所属: ${snsTemplateData.affiliation}\n肩書: ${snsTemplateData.title}\nセッションタイトル: ${snsTemplateData.session_title}\n短縮紹介文: ${snsTemplateData.short_bio}\n\n上記の登壇者情報を使って、参考例と同じ形式で告知文を作成してください。280文字以内で、日本語のみで出力してください。\n\n告知文:`;\n\nreturn {\n  json: {\n    speaker_data: cleanedData,\n    template_data: snsTemplateData,\n    gemini_prompt: fewShotPrompt,\n    workflow_metadata: {\n      trigger_time: new Date().toISOString(),\n      source: \"webhook\",\n    },\n  },\n};\n"
+      },
+      "id": "8849fa95-6f17-4c0e-8cd0-fd83f8183220",
+      "name": "Data Preprocessing1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-800, 160]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, message: 'Speaker announcement workflow completed successfully', timestamp: new Date().toISOString() }) }}",
+        "options": {}
+      },
+      "id": "29412f65-a75e-453e-9e04-54b1bf46151a",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [352, 112]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Speaker Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Speaker Data": {
+      "main": [
+        [
+          {
+            "node": "Data Preprocessing1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Processing": {
+      "main": [
+        [
+          {
+            "node": "Google Chat Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Chat Notification": {
+      "main": [
+        [
+          {
+            "node": "Update Spreadsheet - Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Spreadsheet - Posted": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Text Generation": {
+      "main": [
+        [
+          {
+            "node": "Post Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Preprocessing1": {
+      "main": [
+        [
+          {
+            "node": "Gemini Text Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5d727862-06f5-4069-8dc0-db6935d29498",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "39714a42891d2b1a412e98922d2b60586d576f43f32d1e2e06b2db07a87c726a"
+  },
+  "id": "Kw1aXdYZuaHCidJl",
+  "tags": []
+}
