@@ -1,0 +1,13 @@
+# Development files
+src/
+node_modules/
+*.ts
+*.md
+package*.json
+tsconfig.json
+esbuild.js
+.git/
+.gitignore
+
+# Keep only built files
+!dist/**

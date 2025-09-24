@@ -1,0 +1,20 @@
+{
+  "timeZone": "Asia/Tokyo",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/script.external_request",
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/devstorage.full_control"
+  ],
+  "addOns": {
+    "common": {
+      "name": "登壇者情報通知Bot",
+      "logoUrl": "https://www.gstatic.com/images/icons/material/system/2x/drive_grey600_48dp.png"
+    },
+    "chat": {}
+  }
+}

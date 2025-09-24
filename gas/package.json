@@ -1,0 +1,21 @@
+{
+  "name": "gas",
+  "version": "1.0.0",
+  "main": "コード.js",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.cjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@google/clasp": "^3.0.6-alpha",
+    "@types/google-apps-script": "^2.0.3",
+    "clasp": "^1.0.0",
+    "esbuild": "^0.25.10",
+    "esbuild-gas-plugin": "^0.10.0",
+    "typescript": "^5.9.2"
+  }
+}
