@@ -40,6 +40,9 @@ Google Form で収集した登壇者情報を自動処理し、Google Chat で�
 - Google Apps Script プロジェクト
 - Google Chat スペース
 - n8n インスタンス（Cloud Run + IAP 認証）
+- **Terraform で作成した ChatBot 用サービスアカウント**（`chatbot-sa`）
+
+**重要**: この GAS システムは、Terraform で作成した ChatBot 用サービスアカウント（`chatbot-sa`）を使用します。先にメインの README.md の「Google Cloud Platform の設定」セクションに従って、ChatBot 用サービスアカウントと JSON キーファイル（`chatbot-sa-key.json`）を作成してください。
 
 ### 2. 依存関係インストール
 
@@ -48,28 +51,7 @@ cd gas
 npm install
 ```
 
-### 3. Google Cloud 設定
-
-#### Service Account 作成
-
-1. Google Cloud Console で Service Account を作成
-2. 以下のロールを付与：
-   - `Chat Bot`
-   - `Storage Object Admin`
-   - `Storage Object Viewer`
-3. 秘密鍵を JSON 形式でダウンロード
-
-#### GCS バケット作成
-
-```bash
-# バケット作成
-gsutil mb gs://your-bucket-name
-
-# 公開アクセス設定
-gsutil iam ch allUsers:objectViewer gs://your-bucket-name
-```
-
-### 4. Google Apps Script 設定
+### 3. Google Apps Script 設定
 
 #### 重要: スプレッドシートに紐づいたスクリプトの作成
 
@@ -107,14 +89,14 @@ gsutil iam ch allUsers:objectViewer gs://your-bucket-name
 `setupProperties.ts` を実行してスクリプトプロパティを設定：
 
 ```typescript
-// 必要なプロパティ
+// 必要なプロパティ（Terraformで作成したサービスアカウントを使用）
 const template = {
   GCS_BUCKET_NAME: "your-bucket-name",
   GCS_PROJECT_ID: "your-project-id",
   GOOGLE_CHAT_SPACE_ID: "spaces/your-space-id",
-  SA_CLIENT_EMAIL: "bot@your-project.iam.gserviceaccount.com",
+  SA_CLIENT_EMAIL: "chatbot-sa@your-project.iam.gserviceaccount.com", // Terraformで作成
   SA_PRIVATE_KEY:
-    "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+    "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n", // chatbot-sa-key.jsonから取得
   SPREADSHEET_ID: "your-spreadsheet-id",
   SHEET_NAME: "フォームの回答",
   N8N_WEBHOOK_URL:
@@ -124,8 +106,11 @@ const template = {
   EVENT_DATE: "2025/12/14(土) 13:00-17:00",
   EVENT_URL: "https://gdg-kansai.connpass.com/event/example",
   EVENT_HASHTAG: "DevFest2025Kansai",
+  ENABLE_DEBUG_LOG: true,
 };
 ```
+
+**重要**: `SA_PRIVATE_KEY` の値は、Terraform で作成した `chatbot-sa-key.json` ファイルの `private_key` フィールドの値をコピーしてください。
 
 #### トリガー設定
 
@@ -162,24 +147,17 @@ GAS から n8n の Webhook を呼び出す際は、**IAP（Identity-Aware Proxy�
 
 #### サービスアカウントの設定
 
-n8n Webhook 認証には、ChatApp 認証と同じサービスアカウント（SA_CLIENT_EMAIL、SA_PRIVATE_KEY）を使用します：
+n8n Webhook 認証には、Terraform で作成した ChatBot 用サービスアカウント（`chatbot-sa`）を使用します：
 
 ```typescript
-// スクリプトプロパティに設定
-SA_CLIENT_EMAIL: "your-service-account@project.iam.gserviceaccount.com",
-SA_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+// スクリプトプロパティに設定（Terraformで作成したサービスアカウント）
+SA_CLIENT_EMAIL: "chatbot-sa@your-project.iam.gserviceaccount.com",
+SA_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n", // chatbot-sa-key.jsonから取得
 ```
 
 #### 権限設定
 
-既存の ChatApp 認証用サービスアカウントに IAP アクセス権限を付与します：
-
-```bash
-# サービスアカウントにIAPアクセス権限を付与
-gcloud projects add-iam-policy-binding your-project-id \
-  --member="serviceAccount:your-service-account@your-project.iam.gserviceaccount.com" \
-  --role="roles/iap.httpsResourceAccessor"
-```
+**注意**: ChatBot 用サービスアカウントの IAP アクセス権限は、Terraform の`iap_members`設定で自動的に付与されます。メインの README.md の「Terraform によるインフラストラクチャ構築」セクションで`iap_members`にサービスアカウントを追加してください。
 
 #### 認証の動作
 
@@ -225,20 +203,25 @@ manualTestWorkflow();
   "EVENT_DATE": "2030/10/18(土) 10:00-18:00",
   "EVENT_URL": "https://gdgkwansai.connpass.com/event/366115/",
   "EVENT_HASHTAG": "DevFest2030Kwansai",
-  "GCS_BUCKET_NAME": "announce-workflow-speaker-images-local",
-  "GCS_PROJECT_ID": "gdg-event-workflow-project-id",
+  "GCS_BUCKET_NAME": "announce-workflow-speaker-images-prod",
+  "GCS_PROJECT_ID": "your-project-id",
   "SPREADSHEET_ID": "your-spreadsheet-id",
   "SHEET_NAME": "フォームの回答",
   "GOOGLE_CHAT_SPACE_ID": "spaces/your-space-id",
   "N8N_WEBHOOK_URL": "https://your-n8n-service-url.run.app/webhook/speaker-approval",
   "CLOUD_RUN_SERVICE_URL": "https://your-n8n-service-url.run.app",
-  "SA_CLIENT_EMAIL": "example@project.iam.gserviceaccount.com",
+  "SA_CLIENT_EMAIL": "chatbot-sa@your-project.iam.gserviceaccount.com",
   "SA_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",
   "ENABLE_DEBUG_LOG": true,
   "ALLOWED_IMAGE_TYPES": ["image/jpeg", "image/png", "image/gif"],
   "MAX_IMAGE_SIZE_MB": 10
 }
 ```
+
+**重要**:
+
+- `SA_CLIENT_EMAIL`: Terraform で作成した ChatBot 用サービスアカウントのメールアドレス
+- `SA_PRIVATE_KEY`: Terraform で作成した`chatbot-sa-key.json`ファイルの`private_key`フィールドの値
 
 ## トラブルシューティング
 
@@ -267,6 +250,34 @@ Error: フォームの回答シートが見つかりません
 ```
 
 **解決方法**: シート名に「フォームの回答」が含まれているか確認
+
+#### 4. Terraform で作成したサービスアカウントの認証エラー
+
+```text
+Error: Invalid private key format
+Error: Service account not found
+```
+
+**解決方法**:
+
+1. Terraform で作成した`chatbot-sa-key.json`ファイルの`private_key`フィールドの値を正しくコピーしているか確認
+2. サービスアカウントのメールアドレスが正しく設定されているか確認
+3. Terraform の`iap_members`にサービスアカウントが追加されているか確認
+
+詳細なデバッグコマンドは、メインの README.md の「デバッグコマンド」セクションを参照してください。
+
+#### 5. IAP 認証エラー
+
+```text
+Error: IAP access denied
+```
+
+**解決方法**:
+
+1. Terraform の`iap_members`に ChatBot 用サービスアカウントが追加されているか確認
+2. サービスアカウントに IAP アクセス権限が付与されているか確認
+
+詳細なデバッグコマンドは、メインの README.md の「デバッグコマンド」セクションを参照してください。
 
 ## 開発
 

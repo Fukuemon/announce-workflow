@@ -2,3 +2,4 @@
 .env.production
 *.crt
 .DS_Store
+chatbot-sa-key.json

@@ -3,7 +3,7 @@
 # ローカル値
 ################################################################################
 locals {
-  bucket_base_name = "${var.app_name}-${var.bucket_name}-${var.env}"
+  bucket_base_name = "${var.app_name}-${var.bucket_name}-${var.env}-${var.project_id}"
   bucket_name      = lower(replace(local.bucket_base_name, "_", "-"))
 
   # 共通ラベル

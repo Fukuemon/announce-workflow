@@ -92,40 +92,31 @@ gcloud services enable \
   iap.googleapis.com
 ```
 
-#### 1.3 サービスアカウントの作成
+#### 1.3 ChatBot 用サービスアカウントの作成
 
-Terraform 実行用のサービスアカウントを作成します：
+GoogleChat 実行用のサービスアカウントを作成します：
 
 ```bash
-# サービスアカウントの作成
-gcloud iam service-accounts create terraform-sa \
-  --display-name="Terraform Service Account" \
-  --description="Service account for Terraform operations"
+# ChatBot用サービスアカウントの作成
+gcloud iam service-accounts create chatbot-sa \
+  --display-name="SpeakerAnnounceBot" \
+  --description="Service account for Google Chat Bot operations"
 
 # 必要な権限を付与
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:terraform-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/editor"
+  --member="serviceAccount:chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/storage.objectViewer"
 
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:terraform-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.admin"
+  --member="serviceAccount:chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/storage.objectCreator"
 
-# JSONキーの作成とダウンロード
-gcloud iam service-accounts keys create terraform-sa-key.json \
-  --iam-account=terraform-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
+# JSONキーの作成とダウンロード（GASで使用）
+gcloud iam service-accounts keys create chatbot-sa-key.json \
+  --iam-account=chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
-#### 1.4 認証情報の設定
-
-```bash
-# サービスアカウントキーを使用して認証
-gcloud auth activate-service-account \
-  --key-file=terraform-sa-key.json
-
-# アプリケーションデフォルト認証情報を設定
-gcloud auth application-default login
-```
+**重要**: このサービスアカウントのメールアドレス（`chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com`）を記録しておいてください。後で`terraform.tfvars`の`iap_members`に追加します。
 
 ### 2. n8n 用の環境変数・シークレットの準備
 
@@ -214,6 +205,13 @@ n8n_basic_auth_password = "your-secure-password-here"
 existing_service_account_email = "your-existing-sa@your-project.iam.gserviceaccount.com"
 create_service_account = false
 
+# IAP設定（アクセスを許可するユーザー・グループ・サービスアカウント）
+iap_members = [
+  "user:your-email@example.com",
+  "group:your-group@example.com",
+  "serviceAccount:chatbot-sa@your-project.iam.gserviceaccount.com"
+]
+
 # Cloud Run設定
 cpu_limit     = "1"
 memory_limit  = "2Gi"
@@ -295,24 +293,34 @@ gsutil ls gs://your-bucket-name
 echo "test" | gsutil cp - gs://your-bucket-name/test.txt
 ```
 
-### 6. 既存のサービスアカウントの活用
+### 6. ChatBot 用サービスアカウントの設定
 
-#### 6.1 既存のサービスアカウントの確認
+#### 6.1 ChatBot 用サービスアカウントの確認
 
-GAS で使用しているサービスアカウントを Cloud Run でも利用するため、以下の情報を確認してください：
+先ほど作成した ChatBot 用サービスアカウントの情報を確認してください：
 
-- **サービスアカウントのメールアドレス**: `config.template.json` の `SA_CLIENT_EMAIL` の値
-- **プロジェクト ID**: `config.template.json` の `GCS_PROJECT_ID` の値
+- **サービスアカウントのメールアドレス**: `chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com`
+- **JSON キーファイル**: `chatbot-sa-key.json`
 
 #### 6.2 Terraform 設定の更新
 
-`terraform.tfvars` で既存のサービスアカウントを指定：
+`terraform.tfvars` で ChatBot 用サービスアカウントを IAP メンバーに追加：
 
 ```hcl
-# 既存のサービスアカウントを使用
-existing_service_account_email = "your-existing-sa@your-project.iam.gserviceaccount.com"
-create_service_account = false
+# IAP設定（アクセスを許可するユーザー・グループ・サービスアカウント）
+iap_members = [
+  "user:your-email@example.com",
+  "group:your-group@example.com",
+  "serviceAccount:chatbot-sa@your-project.iam.gserviceaccount.com"
+]
 ```
+
+#### 6.3 GAS 設定での活用
+
+作成した JSON キーファイル（`chatbot-sa-key.json`）を GAS の設定で使用します：
+
+- **SA_CLIENT_EMAIL**: `chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com`
+- **SA_PRIVATE_KEY**: JSON キーファイルの`private_key`フィールドの値
 
 ### 7. トラブルシューティング
 
@@ -322,6 +330,8 @@ create_service_account = false
 - **Basic 認証エラー**: `n8n_basic_auth_password`の設定を確認
 - **Secret Manager アクセス拒否**: Cloud Run サービスアカウントの権限を確認
 - **Supabase 接続エラー**: SSL 証明書と接続情報を確認
+- **IAP アクセス拒否**: `iap_members`に ChatBot 用サービスアカウントが正しく設定されているか確認
+- **GAS ChatBot エラー**: ChatBot 用サービスアカウントの JSON キーが正しく設定されているか確認
 
 #### 7.2 ログの確認
 
@@ -353,6 +363,37 @@ gcloud secrets versions access latest --secret="n8n-basic-auth-password-prod"
 
 # Cloud Runサービスの再デプロイ
 gcloud run services replace service.yaml --region=asia-northeast1
+```
+
+**ChatBot 用サービスアカウントの権限エラーの場合：**
+
+```bash
+# ChatBot用サービスアカウントの権限確認
+gcloud projects get-iam-policy YOUR_PROJECT_ID \
+  --flatten="bindings[].members" \
+  --format="table(bindings.role)" \
+  --filter="bindings.members:chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+
+# 必要に応じて権限を再付与
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/storage.objectViewer"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/storage.objectCreator"
+```
+
+**IAP アクセス拒否の場合：**
+
+```bash
+# IAPメンバーの確認
+gcloud iap web get-iam-policy --resource-type=app-engine
+
+# ChatBot用サービスアカウントをIAPメンバーに追加
+gcloud iap web add-iam-policy-binding \
+  --member="serviceAccount:chatbot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/iap.httpsResourceAccessor"
 ```
 
 ### 8. セキュリティのベストプラクティス

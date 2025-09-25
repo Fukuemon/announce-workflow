@@ -3,13 +3,13 @@
   "EVENT_DATE": "2030/10/18(土) 10:00-18:00",
   "EVENT_URL": "https://gdgkwansai.connpass.com/event/366115/",
   "EVENT_HASHTAG": "DevFest2030Kwansai",
-  "GCS_BUCKET_NAME": "announce-workflow-speaker-images-prod",
-  "GCS_PROJECT_ID": "GCS_PROJECT_ID2",
+  "GCS_BUCKET_NAME": "announce-workflow-speaker-images-prod-{GCP_PROJECT_ID}",
+  "GCS_PROJECT_ID": "GCS_PROJECT_ID",
   "SPREADSHEET_ID": "SPREADSHEET_ID",
   "SHEET_NAME": "フォームの回答",
   "GOOGLE_CHAT_SPACE_ID": "GOOGLE_CHAT_SPACE_ID",
   "N8N_WEBHOOK_URL": "https://n8n-prod-example-an.a.run.app/webhook/speaker-approval",
-  "SA_CLIENT_EMAIL": "speakerannouncebot@example.iam.gserviceaccount.com",
+  "SA_CLIENT_EMAIL": "chatbot-sa@example.iam.gserviceaccount.com",
   "SA_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",
   "CLOUD_RUN_SERVICE_URL": "https://n8n-prod-example-an.a.run.app",
   "ENABLE_DEBUG_LOG": true,
@@ -18,5 +18,5 @@
     "image/png",
     "image/gif"
   ],
-  "MAX_IMAGE_SIZE_MB": 10
+  "MAX_IMAGE_SIZE_MB": 100
 }

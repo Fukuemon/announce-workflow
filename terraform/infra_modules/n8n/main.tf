@@ -127,6 +127,7 @@ module "n8n_cloud_run" {
     env_vars = {
       N8N_PROTOCOL          = "https"
       N8N_SECURE_COOKIE     = "true"
+      N8N_PORT              = 5678
       N8N_HOST              = ""                                                   # Cloud Runのホスト名は自動設定
       WEBHOOK_URL           = var.n8n_webhook_url != "" ? var.n8n_webhook_url : "" # Cloud RunのURL（後で動的に設定）
       N8N_LOG_LEVEL         = "info"

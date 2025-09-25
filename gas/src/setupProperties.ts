@@ -24,13 +24,13 @@ export function setupScriptProperties(): void {
     EVENT_URL: "EVENT_URL",
     EVENT_HASHTAG: "EVENT_HASHTAG",
 
-    GCS_BUCKET_NAME: "announce-workflow-speaker-images-local",
-    GCS_PROJECT_ID: "GCS_PROJECT_ID",
+    GCS_BUCKET_NAME: "announce-workflow-speaker-images-prod-{GCP_PROJECT_ID}",
+    GCS_PROJECT_ID: "{GCP_PROJECT_ID}",
 
     // Chat App 用
     GOOGLE_CHAT_SPACE_ID: "AAA",
     // Service Account
-    SA_CLIENT_EMAIL: "example@project.iam.gserviceaccount.com",
+    SA_CLIENT_EMAIL: "chatbot-sa@example.iam.gserviceaccount.com",
     SA_PRIVATE_KEY:
       "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",
 
@@ -38,7 +38,6 @@ export function setupScriptProperties(): void {
     SHEET_NAME: "フォームの回答",
 
     N8N_WEBHOOK_URL: "N8N_WEBHOOK_URL",
-    IAP_CLIENT_ID: "IAP_CLIENT_ID",
 
     // Cloud RunサービスURL（IAM認証のaudience用）
     CLOUD_RUN_SERVICE_URL: "CLOUD_RUN_SERVICE_URL",

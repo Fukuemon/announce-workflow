@@ -32,8 +32,6 @@ export const CONFIG = {
   N8N_WEBHOOK_URL:
     PropertiesService.getScriptProperties().getProperty("N8N_WEBHOOK_URL") ||
     "",
-  IAP_CLIENT_ID:
-    PropertiesService.getScriptProperties().getProperty("IAP_CLIENT_ID") || "",
 
   // Cloud RunサービスURL（IAM認証のaudience用）
   CLOUD_RUN_SERVICE_URL:

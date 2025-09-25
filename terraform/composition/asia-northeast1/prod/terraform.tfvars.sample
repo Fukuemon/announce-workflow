@@ -6,7 +6,11 @@ project_id = "your-gcp-project-id"
 # n8n設定
 n8n_image = "n8nio/n8n:latest"
 n8n_encryption_key = "your-n8n-encryption-key-here"
-n8n_db_connection_string = "{\"host\":\"aws-1-ap-northeast-1.pooler.supabase.com\",\"port\":\"6543\",\"database\":\"postgres\",\"user\":\"postgres.vsueaempwngmewqaxyls\",\"password\":\"your-password\",\"ssl\":true,\"sslmode\":\"require\"}"
+n8n_db_host        = ""
+n8n_db_port        = "6543"
+n8n_db_database    = "¥"
+n8n_db_user        = ""
+n8n_db_password    = ""
 supabase_ssl_cert = "-----BEGIN CERTIFICATE-----\nYOUR_BASE64_ENCODED_CERT_CONTENT_HERE\n-----END CERTIFICATE-----"
 
 # n8n Basic認証パスワード
@@ -31,10 +35,23 @@ min_instances = 0
 max_instances = 3
 timeout       = "300s"
 
-# GCS設定
-force_destroy = false
+iap_members = [
+  "user:your-email@example.com",
+  "group:your-group@example.com",
+  "serviceAccount:your-existing-sa@your-project.iam.gserviceaccount.com"
+]
 
-# IAM設定
-gcs_viewers  = []
-gcs_creators = []
-gcs_admins   = []
+# GCS IAM設定
+gcs_viewers = [
+  "serviceAccount:your-existing-sa@your-project.iam.gserviceaccount.com",
+  "allUsers"  # 全員が閲覧可能
+]
+
+gcs_creators = [
+  "serviceAccount:your-existing-sa@your-project.iam.gserviceaccount.com"
+]
+
+# GCS設定
+force_destroy = true
+
+# Cloud Run設定
